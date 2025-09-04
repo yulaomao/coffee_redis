@@ -216,6 +216,79 @@ def get_devices_list():
     
     return devices
 
+def get_device_bins_demo(device_id):
+    """Get device bins configuration for demo mode."""
+    demo_data = get_demo_data()
+    device_bins = demo_data['bins'].get(device_id, {})
+    
+    # Convert to list format expected by UI
+    bins = []
+    for bin_index in range(4):  # Assume 4 bins per device
+        bin_data = device_bins.get(bin_index, {
+            'bin_index': bin_index,
+            'material_code': '',
+            'remaining': 0,
+            'capacity': 0,
+            'unit': 'g',
+            'threshold_low_pct': 20,
+            'is_low': False
+        })
+        bins.append(bin_data)
+    
+    return bins
+
+
+def get_orders_list(args=None):
+    """Get orders list with filtering and pagination for demo mode."""
+    orders = list(_demo_data['orders'].values())
+    
+    if args:
+        # Apply filters
+        device_id = args.get('device_id')
+        if device_id:
+            orders = [o for o in orders if o['device_id'] == device_id]
+        
+        payment_status = args.get('payment_status')
+        if payment_status:
+            orders = [o for o in orders if o['payment_status'] == payment_status]
+        
+        order_status = args.get('order_status')
+        if order_status:
+            orders = [o for o in orders if o['order_status'] == order_status]
+        
+        from_date = args.get('from_date')
+        to_date = args.get('to_date')
+        if from_date or to_date:
+            # Filter by date range (simplified)
+            if from_date:
+                from_ts = int(datetime.strptime(from_date, '%Y-%m-%d').timestamp())
+                orders = [o for o in orders if o['created_ts'] >= from_ts]
+            if to_date:
+                to_ts = int((datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)).timestamp())
+                orders = [o for o in orders if o['created_ts'] < to_ts]
+    
+    # Sort by created timestamp (most recent first)
+    orders.sort(key=lambda x: x['created_ts'], reverse=True)
+    
+    # Pagination
+    page = int(args.get('page', 1)) if args else 1
+    page_size = int(args.get('page_size', 20)) if args else 20
+    
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    page_orders = orders[start_idx:end_idx]
+    
+    return {
+        'orders': page_orders,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': len(orders),
+            'has_more': end_idx < len(orders)
+        }
+    }
+
+
 def authenticate_user(username, password):
     """Authenticate user in demo mode."""
     user_data = _demo_data['users'].get(username)

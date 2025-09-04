@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Devices</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshDevices()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportDevices()">
+                <i class="bi bi-download"></i> Export
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form class="row g-3" id="filter-form">
+                    <div class="col-md-3">
+                        <label for="status-filter" class="form-label">Status</label>
+                        <select class="form-select" id="status-filter" name="status">
+                            <option value="">All Status</option>
+                            <option value="online">Online</option>
+                            <option value="offline">Offline</option>
+                            <option value="maintenance">Maintenance</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="model-filter" class="form-label">Model</label>
+                        <input type="text" class="form-control" id="model-filter" name="model" placeholder="Device model">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="query-filter" class="form-label">Search</label>
+                        <input type="text" class="form-control" id="query-filter" name="query" placeholder="Device ID, alias, or IP">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-search"></i> Filter
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Devices Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="select-all"></th>
+                        <th>Device ID</th>
+                        <th>Alias</th>
+                        <th>Status</th>
+                        <th>Model</th>
+                        <th>Location</th>
+                        <th>Last Seen</th>
+                        <th>Today Orders</th>
+                        <th>Materials</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="devices-table-body">
+                    <tr>
+                        <td colspan="10" class="text-center text-muted">
+                            <i class="bi bi-hourglass-split"></i> Loading devices...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <nav aria-label="Devices pagination">
+            <ul class="pagination justify-content-center" id="pagination">
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- Batch Actions Modal -->
+<div class="modal fade" id="batchActionsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Batch Actions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Select an action for <span id="selected-count">0</span> selected devices:</p>
+                <div class="list-group">
+                    <button type="button" class="list-group-item list-group-item-action" onclick="batchCommand('restart')">
+                        <i class="bi bi-arrow-clockwise"></i> Restart Devices
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action" onclick="batchCommand('sync_state')">
+                        <i class="bi bi-arrow-repeat"></i> Sync State
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action" onclick="batchCommand('update_config')">
+                        <i class="bi bi-gear"></i> Update Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let selectedDevices = new Set();
+
+async function loadDevices(page = 1, filters = {}) {
+    try {
+        const params = new URLSearchParams({
+            page: page,
+            page_size: 20,
+            ...filters
+        });
+        
+        const response = await fetch(`/api/v1/devices?${params}`);
+        const result = await response.json();
+        
+        if (result.ok) {
+            renderDevicesTable(result.data.devices);
+            renderPagination(result.data.pagination);
+        }
+    } catch (error) {
+        console.error('Error loading devices:', error);
+        document.getElementById('devices-table-body').innerHTML = 
+            '<tr><td colspan="10" class="text-center text-danger">Error loading devices</td></tr>';
+    }
+}
+
+function renderDevicesTable(devices) {
+    const tbody = document.getElementById('devices-table-body');
+    
+    if (devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No devices found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = devices.map(device => `
+        <tr>
+            <td><input type="checkbox" class="device-checkbox" value="${device.device_id}"></td>
+            <td><a href="/devices/${device.device_id}" class="text-decoration-none">${device.device_id}</a></td>
+            <td>${device.alias || '-'}</td>
+            <td><span class="badge status-badge device-status-${device.status}">${device.status}</span></td>
+            <td>${device.model || '-'}</td>
+            <td>${device.location?.name || '-'}</td>
+            <td>${device.last_seen_ts ? formatTimestamp(device.last_seen_ts) : '-'}</td>
+            <td>${device.today_orders || 0}</td>
+            <td>
+                ${device.low_materials_count > 0 ? 
+                    `<span class="badge bg-danger">${device.low_materials_count} low</span>` : 
+                    '<span class="badge bg-success">OK</span>'
+                }
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="viewDevice('${device.device_id}')">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="syncDevice('${device.device_id}')">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    
+    // Update checkbox listeners
+    updateCheckboxListeners();
+}
+
+function renderPagination(pagination) {
+    const paginationEl = document.getElementById('pagination');
+    const { page, total, has_more } = pagination;
+    
+    let html = '';
+    
+    // Previous button
+    if (page > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${page - 1})">Previous</a></li>`;
+    }
+    
+    // Page numbers (simplified)
+    html += `<li class="page-item active"><span class="page-link">Page ${page}</span></li>`;
+    
+    // Next button
+    if (has_more) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${page + 1})">Next</a></li>`;
+    }
+    
+    paginationEl.innerHTML = html;
+}
+
+function formatTimestamp(ts) {
+    return new Date(ts * 1000).toLocaleString();
+}
+
+function updateCheckboxListeners() {
+    document.querySelectorAll('.device-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedDevices);
+    });
+}
+
+function updateSelectedDevices() {
+    selectedDevices.clear();
+    document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
+        selectedDevices.add(cb.value);
+    });
+    
+    document.getElementById('selected-count').textContent = selectedDevices.size;
+    
+    // Show/hide batch actions
+    if (selectedDevices.size > 0) {
+        // Could show batch actions bar
+    }
+}
+
+function goToPage(page) {
+    currentPage = page;
+    const filters = getFilters();
+    loadDevices(page, filters);
+}
+
+function getFilters() {
+    const form = document.getElementById('filter-form');
+    const formData = new FormData(form);
+    const filters = {};
+    
+    for (let [key, value] of formData.entries()) {
+        if (value) filters[key] = value;
+    }
+    
+    return filters;
+}
+
+function refreshDevices() {
+    loadDevices(currentPage, getFilters());
+}
+
+function viewDevice(deviceId) {
+    window.location.href = `/devices/${deviceId}`;
+}
+
+async function syncDevice(deviceId) {
+    try {
+        const response = await fetch(`/api/v1/devices/${deviceId}/sync_state`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.ok) {
+            alert('Sync command sent successfully');
+            refreshDevices();
+        } else {
+            alert('Error: ' + result.error.message);
+        }
+    } catch (error) {
+        alert('Error sending sync command');
+    }
+}
+
+// Event listeners
+document.getElementById('filter-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    currentPage = 1;
+    loadDevices(1, getFilters());
+});
+
+document.getElementById('select-all').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.device-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    updateSelectedDevices();
+});
+
+// Load devices on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadDevices();
+});
+</script>
+{% endblock %}

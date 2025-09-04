@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshDashboard()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Total Devices</div>
+                        <div class="h5 mb-0 font-weight-bold" id="total-devices">-</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-router fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Online Rate</div>
+                        <div class="h5 mb-0 font-weight-bold" id="online-rate">-%</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-wifi fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Today's Sales</div>
+                        <div class="h5 mb-0 font-weight-bold" id="sales-today">¥-</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-currency-yen fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Open Alarms</div>
+                        <div class="h5 mb-0 font-weight-bold" id="open-alarms">-</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-exclamation-triangle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="m-0 font-weight-bold text-primary">Sales Trend (Last 7 Days)</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="salesChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="m-0 font-weight-bold text-primary">Device Status</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="statusChart" width="300" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="m-0 font-weight-bold text-primary">Recent Alarms</h6>
+            </div>
+            <div class="card-body">
+                <div id="recent-alarms">
+                    <div class="text-center text-muted">
+                        <i class="bi bi-hourglass-split"></i> Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="m-0 font-weight-bold text-primary">Low Materials</h6>
+            </div>
+            <div class="card-body">
+                <div id="low-materials">
+                    <div class="text-center text-muted">
+                        <i class="bi bi-hourglass-split"></i> Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let salesChart, statusChart;
+
+async function loadDashboardData() {
+    try {
+        const response = await fetch('/api/v1/dashboard/summary');
+        const result = await response.json();
+        
+        if (result.ok) {
+            const data = result.data;
+            
+            // Update KPIs
+            document.getElementById('total-devices').textContent = data.device_total;
+            document.getElementById('online-rate').textContent = data.online_rate + '%';
+            document.getElementById('sales-today').textContent = '¥' + (data.sales_today / 100).toFixed(2);
+            document.getElementById('open-alarms').textContent = data.alarms_open;
+            
+            // Update charts
+            updateSalesChart(data.trends.sales);
+            updateStatusChart(data);
+        }
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+function updateSalesChart(salesData) {
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    
+    if (salesChart) {
+        salesChart.destroy();
+    }
+    
+    salesChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: salesData.map(d => {
+                const date = d.date;
+                return date.slice(4, 6) + '/' + date.slice(6, 8);
+            }),
+            datasets: [{
+                label: 'Sales (¥)',
+                data: salesData.map(d => d.value / 100),
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '¥' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateStatusChart(data) {
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    
+    if (statusChart) {
+        statusChart.destroy();
+    }
+    
+    const online = Math.round(data.device_total * data.online_rate / 100);
+    const offline = data.device_total - online;
+    
+    statusChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Online', 'Offline'],
+            datasets: [{
+                data: [online, offline],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(255, 99, 132, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                }
+            }
+        }
+    });
+}
+
+function refreshDashboard() {
+    loadDashboardData();
+}
+
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(loadDashboardData, 30000);
+});
+</script>
+{% endblock %}

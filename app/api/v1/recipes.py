@@ -1,0 +1,1 @@
+"""recipes API endpoints."""

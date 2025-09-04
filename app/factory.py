@@ -23,7 +23,9 @@ redis_client = None
 
 def create_app(config_name=None):
     """Application factory pattern."""
-    app = Flask(__name__)
+    app = Flask(__name__, 
+                template_folder='ui/templates',
+                static_folder='ui/static')
     
     # Load configuration
     config_name = config_name or os.getenv('FLASK_ENV', 'development')
@@ -31,7 +33,13 @@ def create_app(config_name=None):
     
     # Initialize Redis
     global redis_client
-    redis_client = redis.from_url(app.config['REDIS_URL'], decode_responses=True)
+    try:
+        redis_client = redis.from_url(app.config['REDIS_URL'], decode_responses=True)
+        redis_client.ping()  # Test connection
+        app.logger.info("Redis connection established")
+    except Exception as e:
+        app.logger.warning(f"Redis not available: {e}. Running in demo mode.")
+        redis_client = None
     
     # Initialize extensions
     login_manager.init_app(app)
@@ -110,5 +118,25 @@ def setup_logging(app):
 @login_manager.user_loader
 def load_user(user_id):
     """Load user for Flask-Login."""
-    from app.models.user import User
-    return User.get(user_id)
+    try:
+        from app.models.user import User
+        return User.get(user_id)
+    except:
+        # Demo mode fallback
+        from app.utils.demo_data import get_demo_data
+        try:
+            demo_data = get_demo_data()
+            for user_data in demo_data.get('users', {}).values():
+                if user_data['id'] == user_id:
+                    from app.models.user import User
+                    return User(
+                        id=user_data['id'],
+                        username=user_data['username'],
+                        email=user_data['email'],
+                        password_hash=user_data['password_hash'],
+                        is_active=user_data['is_active'],
+                        is_admin=user_data['is_admin']
+                    )
+        except:
+            pass
+        return None

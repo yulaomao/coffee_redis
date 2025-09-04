@@ -13,6 +13,24 @@ from app.factory import redis_client
 def dashboard_summary():
     """Get dashboard summary with KPIs and trends."""
     try:
+        # Check if we're in demo mode (Redis not available)
+        try:
+            from app.factory import redis_client
+            redis_client.ping()
+        except:
+            # Demo mode - use in-memory data
+            from app.utils.demo_data import get_dashboard_summary, init_demo_data
+            
+            # Initialize demo data if not already done
+            try:
+                data = get_dashboard_summary()
+            except:
+                init_demo_data()
+                data = get_dashboard_summary()
+            
+            return jsonify({'ok': True, 'data': data})
+        
+        # Production mode with Redis (original implementation)
         # Query parameters
         from_date = request.args.get('from')
         to_date = request.args.get('to') 

@@ -13,6 +13,34 @@ from app.utils.redis_utils import get_current_ts
 def list_devices():
     """List devices with filtering and pagination."""
     try:
+        # Check if we're in demo mode (Redis not available)
+        try:
+            from app.factory import redis_client
+            redis_client.ping()
+        except:
+            # Demo mode
+            from app.utils.demo_data import get_devices_list, init_demo_data
+            
+            try:
+                devices = get_devices_list()
+            except:
+                init_demo_data()
+                devices = get_devices_list()
+            
+            return jsonify({
+                'ok': True,
+                'data': {
+                    'devices': devices,
+                    'pagination': {
+                        'page': 1,
+                        'page_size': len(devices),
+                        'total': len(devices),
+                        'has_more': False
+                    }
+                }
+            })
+        
+        # Production mode with Redis (original implementation)
         # Query parameters
         merchant_id = request.args.get('merchant_id')
         status = request.args.get('status')

@@ -42,6 +42,7 @@ class Config:
 class DevelopmentConfig(Config):
     """Development configuration."""
     FLASK_DEBUG = True
+    WTF_CSRF_ENABLED = False  # Disable CSRF for demo
 
 
 class ProductionConfig(Config):

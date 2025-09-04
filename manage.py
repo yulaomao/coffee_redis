@@ -40,44 +40,47 @@ def run_worker():
 
 
 @cli.command()
-@with_appcontext
 def init_db():
     """Initialize the database with seed data."""
-    from app.utils.seed_data import initialize_seed_data
-    
-    click.echo('Initializing database with seed data...')
-    initialize_seed_data()
-    click.echo('Database initialized successfully.')
+    app = create_app()
+    with app.app_context():
+        from app.utils.seed_data import initialize_seed_data
+        
+        click.echo('Initializing database with seed data...')
+        initialize_seed_data()
+        click.echo('Database initialized successfully.')
 
 
 @cli.command()
-@with_appcontext
 def clear_db():
     """Clear all data from the database."""
-    from app.factory import redis_client
-    
-    if click.confirm('This will delete all data. Are you sure?'):
-        redis_client.flushdb()
-        click.echo('Database cleared.')
+    app = create_app()
+    with app.app_context():
+        from app.factory import redis_client
+        
+        if click.confirm('This will delete all data. Are you sure?'):
+            redis_client.flushdb()
+            click.echo('Database cleared.')
 
 
 @cli.command()
-@with_appcontext
 def shell():
     """Start an interactive shell."""
     import code
-    from app.factory import redis_client
-    from app.models import device, order, command
-    
-    local_vars = {
-        'app': create_app(),
-        'redis': redis_client,
-        'device': device,
-        'order': order,
-        'command': command,
-    }
-    
-    code.interact(local=local_vars)
+    app = create_app()
+    with app.app_context():
+        from app.factory import redis_client
+        from app.models import Device, Order, RemoteCommand
+        
+        local_vars = {
+            'app': app,
+            'redis': redis_client,
+            'Device': Device,
+            'Order': Order,
+            'Command': RemoteCommand,
+        }
+        
+        code.interact(local=local_vars)
 
 
 if __name__ == '__main__':
